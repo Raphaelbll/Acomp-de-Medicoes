@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-import locale
 
 # Locale para meses em português (Linux/Mac)
 locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
