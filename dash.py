@@ -2,8 +2,8 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-# Locale para meses em português (Linux/Mac)
-locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
+# # Locale para meses em português (Linux/Mac)
+# locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
 
 st.set_page_config(page_title="Medições dos Contratos", layout="wide")
 st.title("📜 Medições dos Contratos")
