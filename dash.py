@@ -22,6 +22,8 @@ def carregar_dados():
     df_med['ORDENAÇÃO'] = df_med['PERÍODO'].dt.to_period('M').dt.to_timestamp()
     df_med['PREVISTO'] = df_med['PREVISTO'].fillna(0)
     df_med['FATURADO'] = df_med['FATURADO'].fillna(0)
+    reordenado = ['CENTRO DE CUSTO', 'OBRA', 'MÊS/ANO', 'PREVISTO', 'FATURADO', 'REGIONAL', 'GESTÃO', 'PERÍODO', 'MÊS', 'ANO', 'ORDENAÇÃO']
+    df_med = df_med[reordenado]
 
     df_contr['VALOR_CONTRATO'] = pd.to_numeric(df_contr['VALOR_CONTRATO'], errors='coerce').fillna(0)
 
@@ -73,17 +75,17 @@ with aba1:
     percentual_contrato = (valor_faturado / valor_contrato * 100) if valor_contrato > 0 else 0
     saldo_contrato = valor_contrato - valor_faturado
 
-    st.subheader("📌 Indicadores Gerais")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("📜 Valor Previsto", f"R$ {valor_previsto:,.2f}")
-    col2.metric("💰 Valor Faturado", f"R$ {valor_faturado:,.2f}")
-    col3.metric("📈 % Realizado sobre Previsto", f"{percentual:.1f}%")
-
     st.subheader("📑 Indicadores do Contrato")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("🏗️ Valor do Contrato", f"R$ {valor_contrato:,.2f}")
+    col2.metric("📊 % do Contrato Faturado", f"{percentual_contrato:.1f}%")
+    col3.metric("🧾 Saldo Contratual", f"R$ {saldo_contrato:,.2f}")
+       
+    st.subheader("📌 Indicadores Gerais")
     col4, col5, col6 = st.columns(3)
-    col4.metric("🏗️ Valor do Contrato", f"R$ {valor_contrato:,.2f}")
-    col5.metric("📊 % do Contrato Faturado", f"{percentual_contrato:.1f}%")
-    col6.metric("🧾 Saldo Contratual", f"R$ {saldo_contrato:,.2f}")
+    col4.metric("📜 Valor Previsto", f"R$ {valor_previsto:,.2f}")
+    col5.metric("💰 Valor Faturado", f"R$ {valor_faturado:,.2f}")
+    col6.metric("📈 % Realizado sobre Previsto", f"{percentual:.1f}%")
 
     # Gráficos
     df_long = pd.melt(
@@ -123,11 +125,58 @@ with aba1:
         df_filtrado.style.format({'PREVISTO': 'R$ {:,.2f}', 'FATURADO': 'R$ {:,.2f}'})
     )
 
+    # CURVA S - Planejado vs Realizado acumulado
+    st.subheader("📈 Curva S - Execução Acumulada do Contrato")
+
+    curva = (
+        df_filtrado.groupby('PERÍODO')[['PREVISTO', 'FATURADO']]
+        .sum()
+        .sort_index()
+        .cumsum()
+        .reset_index()
+    )
+
+    curva['MÊS/ANO'] = curva['PERÍODO'].apply(lambda d: f"{meses_pt[d.month]}/{d.year}")
+
+    fig_curva = px.line(
+        curva,
+        x='MÊS/ANO',
+        y=['PREVISTO', 'FATURADO'],
+        markers=True,
+        labels={'value': 'Valor acumulado (R$)', 'MÊS/ANO': 'Data', 'variable': 'Tipo'},
+        color_discrete_map={'PREVISTO': '#1f77b4', 'FATURADO': '#2ca02c'},
+        title=f"Curva S - {obra_selecionada}" if obra_selecionada != "Todas as obras" else "Curva S - Todas as Obras"
+    )
+
+    fig_curva.update_layout(
+        xaxis_title="Mês/Ano",
+        yaxis_title="Valor acumulado (R$)",
+        legend_title_text="Tipo de Medição",
+        hovermode="x unified"
+    )
+
+    st.plotly_chart(fig_curva, use_container_width=True)
+
+
 # ===== ABA 2: ANÁLISES AVANÇADAS =====
 with aba2:
     st.title("📊 Análises Avançadas")
-    df_analise, _ = aplicar_filtros(medicoes, prefixo="analises")
 
+    # Novo filtro apenas por ano e mês
+    col1, col2 = st.columns(2)
+    anos = sorted(medicoes['ANO'].unique())
+    ano = col1.selectbox("📅 Ano", ['Todos'] + anos, key="analises_ano")
+
+    meses = sorted(medicoes['MÊS'].unique())
+    nomes_meses = ['Todos'] + [meses_pt[m] for m in meses]
+    nome_mes = col2.selectbox("📆 Mês", nomes_meses, key="analises_mes")
+
+    df_analise = medicoes.copy()
+    if ano != 'Todos':
+        df_analise = df_analise[df_analise['ANO'] == ano]
+    if nome_mes != 'Todos':
+        num_mes = {v: k for k, v in meses_pt.items()}[nome_mes]
+        df_analise = df_analise[df_analise['MÊS'] == num_mes]
 
     # Ranking de execução por contrato
     st.subheader("🏆 Ranking de Execução por Contrato")
@@ -137,11 +186,16 @@ with aba2:
     execucao = execucao.sort_values('% EXECUTADO', ascending=False)
 
     st.dataframe(execucao[['OBRA', 'FATURADO_TOTAL', 'VALOR_CONTRATO', '% EXECUTADO']]
-                 .style.format({'FATURADO_TOTAL': 'R$ {:,.2f}', 'VALOR_CONTRATO': 'R$ {:,.2f}', '% EXECUTADO': '{:.1f}%'}))
+                 .style.format({
+                     'FATURADO_TOTAL': 'R$ {:,.2f}',
+                     'VALOR_CONTRATO': 'R$ {:,.2f}',
+                     '% EXECUTADO': '{:.1f}%'
+                 }))
 
     st.plotly_chart(
-        px.bar(execucao, x='% EXECUTADO', y='OBRA', orientation='h', text='% EXECUTADO',
-               labels={'% EXECUTADO': '% Executado'}, color='OBRA')
+        px.bar(execucao, x='% EXECUTADO', y='OBRA', orientation='h',
+               text='% EXECUTADO', labels={'% EXECUTADO': '% Executado'}, color='OBRA')
+        .update_traces(texttemplate='%{x:.1f}%', textposition='outside')
         .update_layout(showlegend=False),
         use_container_width=True
     )
@@ -161,13 +215,15 @@ with aba2:
         use_container_width=True
     )
 
-    # Gráfico de pizza
-    st.subheader("🥧 Participação das Obras no Total Faturado")
-    pizza = df_analise.groupby('OBRA')['FATURADO'].sum().reset_index(name='TOTAL_FATURADO')
+    # Participação das obras no total faturado (gráfico de barras)
+    st.subheader("🏗️ Participação das Obras no Total Faturado")
+    participacao = df_analise.groupby('OBRA')['FATURADO'].sum().reset_index(name='TOTAL_FATURADO')
+    participacao = participacao.sort_values('TOTAL_FATURADO', ascending=True)
 
     st.plotly_chart(
-        px.pie(pizza, names='OBRA', values='TOTAL_FATURADO', hole=0.3,
-               title='Distribuição do Faturamento por Obra')
-        .update_traces(textinfo='percent+label'),
+        px.bar(participacao, x='TOTAL_FATURADO', y='OBRA', orientation='h',
+               text='TOTAL_FATURADO', labels={'TOTAL_FATURADO': 'Total Faturado (R$)'})
+        .update_traces(texttemplate='R$ %{x:,.0f}', textposition='outside')
+        .update_layout(showlegend=False),
         use_container_width=True
     )
