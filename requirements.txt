@@ -2,5 +2,3 @@ streamlit
 pandas
 plotly
 openpyxl
-sqlite3
-hashlib
