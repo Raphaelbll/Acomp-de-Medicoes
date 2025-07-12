@@ -1,6 +1,46 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 import plotly.express as px
+import sqlite3
+import hashlib
+
+# ========== FUNÇÕES DE AUTENTICAÇÃO ==========
+def conectar_banco():
+    return sqlite3.connect('usuarios.db')
+
+def verificar_usuario(usuario, senha):
+    conn = conectar_banco()
+    cursor = conn.cursor()
+    senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+
+    cursor.execute("SELECT nome FROM usuarios WHERE usuario = ? AND senha_hash = ?", (usuario, senha_hash))
+    resultado = cursor.fetchone()
+    conn.close()
+    return resultado[0] if resultado else None
+
+def login():
+    st.title("🔐 Login")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        nome = verificar_usuario(usuario, senha)
+        if nome:
+            st.session_state['logado'] = True
+            st.session_state['usuario'] = usuario
+            st.session_state['nome'] = nome
+            st.rerun()
+        else:
+            st.error("Usuário ou senha inválidos.")
+
+# ========== CONTROLE DE SESSÃO ==========
+if 'logado' not in st.session_state:
+    st.session_state['logado'] = False
+
+if not st.session_state['logado']:
+    login()
+    st.stop()
+
+# ========== INÍCIO DO APLICATIVO ==========
 
 st.set_page_config(page_title="Medições dos Contratos", layout="wide")
 
